@@ -1,0 +1,68 @@
+import pandas as pd
+from mlxtend.frequent_patterns import apriori, association_rules
+import pyfpgrowth
+
+inputfile = 'survey_sample.csv'
+outputfile = 'apriori_rules1.csv'
+outputfile1 = 'FP_Growth.csv'
+
+
+missing_values = ["n/a", "na", " "]
+data = pd.read_csv(inputfile, na_values=missing_values)
+
+
+confidence_vars = ['confinan', 'conbus', 'coneduc', 'conpress', 'conmedic', 'contv']
+confidence_map = {
+    'A great deal': 5,
+    'Only some': 3,
+    'Hardly any': 1,
+    'NAP': 0,
+    'DK': 0,
+    None: 0
+}
+
+
+for var in confidence_vars:
+    if var in data.columns:
+        data[var] = data[var].map(confidence_map)
+        data[var] = pd.to_numeric(data[var], errors='coerce')
+        data[var] = data[var].apply(lambda x: 1 if x > 3 else 0)
+        data[var] = data[var].astype(int)
+
+
+data['agecat'] = data['agecat'].astype('category')
+data_encoded = pd.get_dummies(data, columns=['agecat'])
+
+
+data_encoded = data_encoded[confidence_vars + [col for col in data_encoded.columns if 'agecat_' in col]]
+
+
+data_list = data_encoded.apply(lambda row: row.index[row == 1].tolist(), axis=1).tolist()
+
+
+print('=' * 85)
+print('Apriori Algorithm')
+frequent_itemsets = apriori(data_encoded, min_support=0.1, use_colnames=True)
+rules = association_rules(frequent_itemsets, metric="confidence", min_threshold=0.7)
+
+
+rules.to_csv(outputfile, index=False)
+
+
+for i, rule in rules.iterrows():
+    print('-' * 85)
+    print(f"Required Association No. {i + 1} is:\n {rule}")
+
+
+print('=' * 85)
+print('FP Growth Algorithm')
+patterns = pyfpgrowth.find_frequent_patterns(data_list, 15)
+rules_fp = pyfpgrowth.generate_association_rules(patterns, 0.7)
+
+
+pd.DataFrame.from_dict(rules_fp, orient='index').to_csv(outputfile1)
+
+
+for key, value in rules_fp.items():
+    print('-' * 85)
+    print(key, "=>", value)
